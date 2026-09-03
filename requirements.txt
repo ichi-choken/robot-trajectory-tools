@@ -1,0 +1,7 @@
+# 軌跡計測・可視化ツール群の依存パッケージ
+opencv-python>=4.8
+numpy>=1.24
+pandas>=2.0
+scipy>=1.10
+matplotlib>=3.7
+Pillow>=10.0

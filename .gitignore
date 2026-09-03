@@ -1,0 +1,30 @@
+# --- 第三者著作物（再配布しない） ---
+# コース図PDFおよびそこから生成した画像
+*.pdf
+assets/*.png
+!assets/.gitkeep
+
+# --- 計測データ・出力物 ---
+*.mp4
+*.mov
+*.csv
+!examples/*.csv
+軌跡画像*.jpg
+マスク確認*.jpg
+背景グリッド.png
+capture/
+result/
+output/
+
+# --- Python ---
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+.env
+
+# --- エディタ・OS ---
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
