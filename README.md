@@ -12,10 +12,10 @@ ETロボコン向けに作った，ライントレースロボットの**走行�
 
 | スクリプト | 対象環境 | 入力 | 出力 | 用途 |
 | --- | --- | --- | --- | --- |
-| `src/軌跡ロガー_mp4版.py` | 実機 | 天井から撮影したmp4 | 軌跡CSV，軌跡画像 | 動画から赤マーカーを追跡し実座標に変換 |
+| `src/camera_trajectory_logger.py` | 実機 | 天井から撮影したmp4 | `軌跡.csv`，軌跡画像 | 動画から赤マーカーを追跡し実座標に変換 |
 | `src/pose_logger.py` | シミュレータ | 連番PNG（キャプチャ画像） | `trajectory.csv`，重畳画像 | 走行中にリアルタイムで座標を記録 |
-| `src/軌跡プロット.py` | 実機 | `pybricks-data-*.csv` | 軌跡図 | 機体オドメトリのログをコース図に重ねて描画 |
-| `tools/コース画像生成.py` | 共通 | コース全体図PDF | 片側コースのPNG | 背景画像の生成 |
+| `src/odometry_plot.py` | 実機 | `pybricks-data-*.csv` | `plot.png` | 機体オドメトリのログをコース図に重ねて描画 |
+| `tools/generate_course_image.py` | 共通 | コース全体図PDF | 片側コースのPNG | 背景画像の生成 |
 
 ### 実機とシミュレータの違い
 
@@ -37,7 +37,7 @@ cd robot-trajectory-tools
 pip install -r requirements.txt
 ```
 
-`tools/コース画像生成.py` のみ poppler-utils（`pdftoppm`）が別途必要です．
+`tools/generate_course_image.py` のみ poppler-utils（`pdftoppm`）が別途必要です．
 
 ```bash
 sudo apt install poppler-utils                # Ubuntu / Debian
@@ -52,8 +52,8 @@ winget install oschwartz10612.Poppler         # Windows
 
 1. スマートフォンを天井に固定し，コースを**真上から**撮影する（斜めだと射影歪みが乗ります）
 2. 機体上面に**赤い円マーカー**（直径42.5mm）を貼る
-3. 床の写る位置に**ティール色の正方形**（参照マーカー）を置く．これで `mm/px` を自動算出するため必須です
-4. カメラ高さ `H` とマーカー高さ `h` をメジャーで測っておく
+3. 床の写る位置に**一辺150mmのティール色の正方形**（参照マーカー，折り紙など）を置く．これで `mm/px` を自動算出するため必須です
+4. カメラ高さ（床からレンズまで）とマーカー高さ（床からマーカー紙面まで）をメジャーで測っておく
 
 ### ファイルの置き場所
 
@@ -63,7 +63,7 @@ winget install oschwartz10612.Poppler         # Windows
 ```
 robot-trajectory-tools/
 └─ src/
-   ├─ 軌跡ロガー_mp4版.py
+   ├─ camera_trajectory_logger.py
    ├─ 走行20260903.mp4      ← ここに置く（ファイル名は任意）
    └─ 背景グリッド.png       ← 任意．無ければ自動生成される
 ```
@@ -79,7 +79,7 @@ robot-trajectory-tools/
 
 ```bash
 cd src
-python 軌跡ロガー_mp4版.py
+python camera_trajectory_logger.py
 ```
 
 複数の動画を置いている場合は，解析したいものを最後にコピーし直すか，他を別フォルダへ退避してください．
@@ -90,7 +90,7 @@ python 軌跡ロガー_mp4版.py
 
 | ファイル | 内容 |
 | --- | --- |
-| 軌跡CSV | フレームごとの時刻[ms]，画像座標，実座標[mm] |
+| `軌跡.csv` | フレームごとの時刻[ms]，画像座標，実座標[mm] |
 | `軌跡画像.jpg` | グリッド背景に軌跡を重ねた図．60フレーム（約2秒）ごとに更新 |
 | `マスク確認.jpg` | 赤マーカーの検出マスク．**まずこれを見ること** |
 
@@ -101,14 +101,15 @@ python 軌跡ロガー_mp4版.py
 スクリプト冒頭にまとまっています．
 
 ```python
-H = 1990            # カメラ高さ[mm]
-h = 161             # マーカー高さ（床から機体上面）[mm]
-MARKER_MM = 42.5    # 赤マーカーの実径[mm]
-MAX_JUMP_PX = 80    # 1フレームあたりの許容移動量[px]
-PROCESS_EVERY = 1   # 処理が重いときは 2〜3 に上げてフレームを間引く
+CAM_HEIGHT_MM = 1990.0     # カメラ高さ（床からレンズまで）[mm]
+MARKER_HEIGHT_MM = 161.0   # マーカー高さ（床から赤マーカー紙面まで）[mm]
+MARKER_DIAMETER_MM = 42.5  # 赤マーカーの実径[mm]
+REF_SQUARE_MM = 150.0      # 参照マーカーの一辺[mm]
+MAX_JUMP_PX = 80           # 1フレームあたりの許容移動量[px]
+PROCESS_EVERY = 1          # 処理が重いときは 2〜3 に上げてフレームを間引く
 ```
 
-`H` と `h` は `(H - h) / H` の補正に使います．マーカーは床から浮いているので，これを掛けないと移動量が実寸より大きく出ます．
+`CAM_HEIGHT_MM` と `MARKER_HEIGHT_MM` は `(CAM_HEIGHT_MM - MARKER_HEIGHT_MM) / CAM_HEIGHT_MM` の補正に使います．マーカーは床から浮いているので，これを掛けないと移動量が実寸より大きく出ます．
 
 ### うまくいかないとき
 
@@ -174,7 +175,7 @@ Pybricksが出力した `pybricks-data-*.csv` を読み，コース図に重ね�
 **指定フォルダ内で更新日時が最新のCSV**を自動選択します．
 
 ```bash
-python src/軌跡プロット.py
+python src/odometry_plot.py
 ```
 
 ### ファイルの置き場所
@@ -186,7 +187,7 @@ robot-trajectory-tools/
 ├─ assets/
 │  └─ Lコース全体図.png          ← 「使い方 D」で生成される
 └─ src/
-   ├─ 軌跡プロット.py
+   ├─ odometry_plot.py
    ├─ background.png             ← 上をこの名前でコピーする
    └─ pybricks-data-20260903.csv ← ログCSV（ファイル名は任意）
 ```
@@ -203,17 +204,19 @@ copy assets\Lコース全体図.png src\background.png        # Windows
 
 CSVは UTF-8 BOM付き，単位はcmで，`odo_x`，`odo_y`，`o_deg` の列が必要です．
 
+描画結果はカレントフォルダに `plot.png` として保存されます．
+
 ### 調整用パラメータ
 
 スクリプト冒頭に集約してあります．
 
 ```python
 CSV_DIR = "."               # CSVを探すフォルダ
-VEHICLE_WIDTH_CM = 12.5     # 車体幅（軌跡に帯として描く）
-ARROW_STEP_CM = 20          # 方位矢印の間隔
-ARROW_LEN_CM = 10           # 方位矢印の長さ
-X_SIGN = -1                 # odo_x の符号（写真の向きに合わせる）
-THETA_OFFSET_DEG = 90       # 方位角のオフセット
+VEHICLE_WIDTH_CM = 12.5     # 車体幅（軌跡に帯として描く．0で無効）
+ARROW_STEP_CM = 10.0        # 方位矢印の間隔（走行距離ごと）
+ARROW_LEN_CM = 8.0          # 方位矢印の長さ
+X_SIGN = -1.0               # odo_x の符号（写真の向きに合わせる）
+THETA_OFFSET_DEG = 90.0     # 方位角のオフセット
 ODO_UNIT = "cm"
 ```
 
@@ -235,7 +238,7 @@ ODO_UNIT = "cm"
 公式配布のPDF（全体図・50%縮図）を手元に置いて生成してください．
 
 ```bash
-python tools/コース画像生成.py コース全体図.pdf --side L
+python tools/generate_course_image.py コース全体図.pdf --side L
 ```
 
 | オプション | 既定値 | 内容 |
@@ -256,7 +259,7 @@ python tools/コース画像生成.py コース全体図.pdf --side L
 
 ### 生成後にやること
 
-`軌跡プロット.py` は `background.png` という名前で背景を読むため，コピーして名前を合わせます．
+`odometry_plot.py` は `background.png` という名前で背景を読むため，コピーして名前を合わせます．
 
 ```bash
 cp assets/Lコース全体図.png src/background.png          # Linux / macOS
